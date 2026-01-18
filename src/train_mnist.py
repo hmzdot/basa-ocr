@@ -7,7 +7,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
-from train_utils import Checkpointer, Tracker
+from train_utils import Tracker
 
 train_dataset = datasets.MNIST(
     root="data", download=True, train=True, transform=(transforms.ToTensor())
@@ -58,11 +58,13 @@ class Classifier(nn.Module):
 
 run_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 t = Tracker(run_name=run_name)
-c = Checkpointer(run_name=run_name)
-
 
 model = Classifier()
 optimizer = optim.AdamW(model.parameters(), lr=0.001)
+
+# Register model and optimizer for checkpointing
+t.register("model", model)
+t.register("optimizer", optimizer)
 
 for i, (imgs, labels) in enumerate(train_loader):
     logits = model(imgs)
@@ -76,8 +78,8 @@ for i, (imgs, labels) in enumerate(train_loader):
     optimizer.step()
 
     if i % 10 == 0:
-        t.add_stat("train_loss", i, loss.item())
-        t.save_plot("train_loss")
+        t.log(i, train_loss=loss.item())
+        t.plot("train_loss")
 
 
 total_correct = 0

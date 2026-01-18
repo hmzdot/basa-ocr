@@ -1,29 +1,28 @@
 """
-Initial accuracy: 0.00%
+-- Dataset: 5 letters + uneven spacing + random effects
+
+Accuracy: 0.00%
 - Train loss: 4.11 (resonated between 4.10-4.16)
 - Epoch: 10
 - Conv features: 3 -> 32 -> 64 -> 128
 - Linear layer: 18432 -> 512
 - Classifiers: 512 -> 62
 
-Increase linear layer size: 0.00%
-- Train loss: 4.13 (less resonating, but still bad convergence)
+-- Dataset: 5 letters + even spacing
+
+Accuracy: 84.00%
+- Train loss: 0.16
 - Epoch: 10
 - Conv features: 3 -> 32 -> 64 -> 128
-* Linear layer: 18432 -> 2048 -> 512
+- Linear layer: 18432 -> 512
 - Classifiers: 512 -> 62
 
-Increase classifier size: 0.00%
-- Train loss: 4.13
+-- Dataset: 5 letters + even spacing + random effects
+
+Accuracy: 65.75%
+- Train loss: 0.32
 - Epoch: 10
 - Conv features: 3 -> 32 -> 64 -> 128
-* Linear layer: 18432 -> 2048
-* Classifiers: 2048 -> 512 -> 62
-
-Add a ConvBlock: 0.00%
-- Train loss: 4.13
-- Epoch: 10
-* Conv features: 3 -> 32 -> 64 -> 128 -> 256
 - Linear layer: 18432 -> 512
 - Classifiers: 512 -> 62
 
@@ -43,14 +42,15 @@ from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision import datasets, transforms
 from tqdm import tqdm
 
-from train_utils import Checkpointer, Tracker
+from train_utils import Tracker
 
+DATASET_DIR = "data/even_words/"
 IMG_SIZE = 60
 BATCH_SIZE = 16
 LETTERS = string.ascii_letters + string.digits
 LEN_LETTERS = len(LETTERS)
 NUM_LETTERS = 5
-EPOCHS = 10
+EPOCHS = 20
 
 
 class SplitHorizontal(nn.Module):
@@ -72,14 +72,14 @@ class FixedWordsDataset(Dataset):
 
     def __init__(self):
         super().__init__()
-        self.image_list = os.listdir("data/fixed_words")
+        self.image_list = os.listdir(DATASET_DIR)
 
     def __len__(self):
         return len(self.image_list)
 
     def __getitem__(self, index):
         image_name = self.image_list[index]
-        image_path = os.path.join("data/fixed_words", image_name)
+        image_path = os.path.join(DATASET_DIR, image_name)
         img = Image.open(image_path).resize((IMG_SIZE, IMG_SIZE))
         img = np.array(img).transpose(2, 0, 1)
         img = torch.tensor(img, dtype=torch.float32) / 255.0
@@ -159,11 +159,13 @@ class Classifier(nn.Module):
 
 run_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 t = Tracker(run_name=run_name)
-c = Checkpointer(run_name=run_name)
-
 
 model = Classifier()
 optimizer = optim.AdamW(model.parameters(), lr=0.001)
+
+# Register model and optimizer for checkpointing
+t.register("model", model)
+t.register("optimizer", optimizer)
 
 for epoch in range(EPOCHS):
     pbar = tqdm(enumerate(train_loader), desc=f"Epoch {epoch}", total=len(train_loader))
@@ -181,9 +183,9 @@ for epoch in range(EPOCHS):
 
         if i % 10 == 0:
             pbar.set_postfix_str(f"Loss: {loss.item():.2f}")
-            t.add_stat("train_loss", i + epoch * len(train_loader), loss.item())
-            t.save_plot("train_loss")
-            t.save_txt("train_loss")
+            step = i + epoch * len(train_loader)
+            t.log(step, train_loss=loss.item())
+            t.plot("train_loss")
 
     correct_letters = 0
     total_correct = 0
@@ -206,7 +208,12 @@ for epoch in range(EPOCHS):
         )
 
         accuracy = total_correct * 100 / total_samples
-        t.add_stat("val_accuracy", epoch, accuracy)
-        t.save_plot("val_accuracy")
+        t.log(epoch, val_accuracy=accuracy)
+        t.plot("val_accuracy")
         print(f"Accuracy: {accuracy:.3f}%")
+        
+        # Save checkpoint
+        t.save_logs()
+        t.save(epoch=epoch, is_best=False, keep_last=3)
+        
         model.train()

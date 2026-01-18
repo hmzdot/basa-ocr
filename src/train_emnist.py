@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm import tqdm
 
-from train_utils import Checkpointer, Tracker
+from train_utils import Tracker
 
 BATCH_SIZE = 16
 NUM_CLASSES = 47
@@ -108,11 +108,13 @@ class Classifier(nn.Module):
 
 run_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 t = Tracker(run_name=run_name)
-c = Checkpointer(run_name=run_name)
-
 
 model = Classifier()
 optimizer = optim.AdamW(model.parameters(), lr=0.001)
+
+# Register model and optimizer for checkpointing
+t.register("model", model)
+t.register("optimizer", optimizer)
 
 for epoch in range(EPOCHS):
     pbar = tqdm(enumerate(train_loader), desc=f"Epoch {epoch}", total=len(train_loader))
@@ -126,9 +128,8 @@ for epoch in range(EPOCHS):
 
         if i % 10 == 0:
             pbar.set_postfix_str(f"Loss: {loss.item():.2f}")
-            t.add_stat("train_loss", i, loss.item())
-            t.save_plot("train_loss")
-            t.save_txt("train_loss")
+            t.log(i, train_loss=loss.item())
+            t.plot("train_loss")
 
     total_correct = 0
     total_samples = 0
@@ -144,7 +145,11 @@ for epoch in range(EPOCHS):
     print(f"Total samples: {total_samples}")
 
     accuracy = total_correct * 100 / total_samples
-    t.add_stat("val_accuracy", epoch, accuracy)
-    t.save_plot("val_accuracy")
+    t.log(epoch, val_accuracy=accuracy)
+    t.plot("val_accuracy")
     print(f"Accuracy: {accuracy:.2f}%")
+    
+    # Save checkpoint
+    t.save(epoch=epoch, is_best=False, keep_last=3)
+    
     model.train()
