@@ -6,6 +6,7 @@ Ablations:
 - Without ReLU and dropout: 88.83%
 - With batch size of 16: 88.44%
 """
+
 from datetime import datetime
 
 import torch
@@ -28,15 +29,17 @@ train_dataset = datasets.EMNIST(
     root="data",
     train=True,
     download=True,
-    transform=transforms.Compose([
-        transforms.RandomRotation(10),
-        transforms.RandomAffine(
-            degrees=0,
-            translate=(0.1, 0.1),
-            scale=(0.9, 1.1),
-        ),
-        transforms.ToTensor()
-    ]),
+    transform=transforms.Compose(
+        [
+            transforms.RandomRotation(10),
+            transforms.RandomAffine(
+                degrees=0,
+                translate=(0.1, 0.1),
+                scale=(0.9, 1.1),
+            ),
+            transforms.ToTensor(),
+        ]
+    ),
 )
 val_dataset = datasets.EMNIST(
     split="balanced",
@@ -56,6 +59,7 @@ val_loader = DataLoader(
     batch_size=BATCH_SIZE,
     shuffle=False,
 )
+
 
 class ConvBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int = 3):
@@ -94,7 +98,7 @@ class Classifier(nn.Module):
             nn.Flatten(),
             nn.Linear(128 * 7 * 7, 512),
             nn.ReLU(),
-            nn.Dropout(0.5)
+            nn.Dropout(0.5),
         )
         self.classifier = nn.Linear(512, NUM_CLASSES)
 
@@ -144,5 +148,3 @@ for epoch in range(EPOCHS):
     t.save_plot("val_accuracy")
     print(f"Accuracy: {accuracy:.2f}%")
     model.train()
-
-

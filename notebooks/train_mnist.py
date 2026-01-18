@@ -9,17 +9,11 @@ def _():
     from torchvision import datasets, transforms
 
     train_dataset = datasets.MNIST(
-        root='data',
-        download=True,
-        train=True,
-        transform=(transforms.ToTensor())
+        root="data", download=True, train=True, transform=(transforms.ToTensor())
     )
 
     val_dataset = datasets.MNIST(
-        root='data',
-        download=True,
-        train=False,
-        transform=(transforms.ToTensor())
+        root="data", download=True, train=False, transform=(transforms.ToTensor())
     )
     return train_dataset, val_dataset
 
@@ -51,19 +45,18 @@ def _():
             self.inner = nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=1),
                 nn.ReLU(),
-                nn.MaxPool2d(kernel_size=2, stride=2)
+                nn.MaxPool2d(kernel_size=2, stride=2),
             )
 
         def forward(self, x):
             return self.inner(x)
-
 
     class Classifier(nn.Module):
         def __init__(self):
             super().__init__()
             self.features = nn.Sequential(
                 ConvBlock(1, 16),
-                ConvBlock(16,32),
+                ConvBlock(16, 32),
                 nn.Flatten(),
                 nn.Linear(32 * 7 * 7, 512),
             )
@@ -71,6 +64,7 @@ def _():
 
         def forward(self, x):
             return self.classifier(self.features(x))
+
     return (Classifier,)
 
 
@@ -86,7 +80,7 @@ def _(Classifier, train_loader, val_loader):
     for imgs, labels in train_loader:
         logits = model(imgs)
 
-        labels_onehot = torch.zeros((labels.shape[0], 10)) 
+        labels_onehot = torch.zeros((labels.shape[0], 10))
         labels_onehot[torch.arange(16), labels] = 1
 
         optimizer.zero_grad()
