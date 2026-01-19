@@ -142,8 +142,30 @@ class Tracker:
                 ys_smooth = self._ema(ys, 0.5)
                 plt.plot(xs, ys, alpha=0.3, color="gray")
                 plt.plot(xs, ys_smooth, label=f"{name}")
+                # Find min/max in smoothed data
+                y_plot = ys_smooth
             else:
                 plt.plot(xs, ys, label=name)
+                y_plot = ys
+
+            # Find and mark minimum and maximum points
+            min_idx = np.argmin(y_plot)
+            max_idx = np.argmax(y_plot)
+            
+            min_x, min_y = xs[min_idx], y_plot[min_idx]
+            max_x, max_y = xs[max_idx], y_plot[max_idx]
+            
+            # Mark minimum point
+            plt.plot(min_x, min_y, 'o', color='red', markersize=8, label=f'{name} min' if len(metrics) == 1 else None)
+            plt.annotate(f'Min: {min_y:.4f}', xy=(min_x, min_y), xytext=(10, 10), 
+                        textcoords='offset points', fontsize=9, color='red',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
+            
+            # Mark maximum point
+            plt.plot(max_x, max_y, 's', color='blue', markersize=8, label=f'{name} max' if len(metrics) == 1 else None)
+            plt.annotate(f'Max: {max_y:.4f}', xy=(max_x, max_y), xytext=(10, -20), 
+                        textcoords='offset points', fontsize=9, color='blue',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
 
         plt.xlabel("step")
         plt.legend(loc="best")
