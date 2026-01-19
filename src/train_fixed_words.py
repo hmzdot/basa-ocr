@@ -10,18 +10,18 @@ Accuracy: 0.00%
 
 -- Dataset: 5 letters + even spacing
 
-Accuracy: 84.00%
+Accuracy: 84.55%
 - Train loss: 0.16
-- Epoch: 10
+- Epoch: 20
 - Conv features: 3 -> 32 -> 64 -> 128
 - Linear layer: 18432 -> 512
 - Classifiers: 512 -> 62
 
 -- Dataset: 5 letters + even spacing + random effects
 
-Accuracy: 65.75%
-- Train loss: 0.32
-- Epoch: 10
+Accuracy: 74.95%
+- Train loss: 0.10
+- Epoch: 20
 - Conv features: 3 -> 32 -> 64 -> 128
 - Linear layer: 18432 -> 512
 - Classifiers: 512 -> 62
@@ -44,7 +44,7 @@ from tqdm import tqdm
 
 from train_utils import Tracker
 
-DATASET_DIR = "data/even_words/"
+DATASET_DIR = "data/even_words_random/"
 IMG_SIZE = 60
 BATCH_SIZE = 16
 LETTERS = string.ascii_letters + string.digits
