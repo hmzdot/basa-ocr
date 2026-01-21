@@ -148,8 +148,8 @@ for epoch in range(EPOCHS):
     t.log(epoch, val_accuracy=accuracy)
     t.plot("val_accuracy")
     print(f"Accuracy: {accuracy:.2f}%")
-    
+
     # Save checkpoint
     t.save(epoch=epoch, is_best=False, keep_last=3)
-    
+
     model.train()

@@ -1,31 +1,11 @@
 """
--- Dataset: 5 letters + uneven spacing + random effects
-
-Accuracy: 0.00%
-- Train loss: 4.11 (resonated between 4.10-4.16)
-- Epoch: 10
-- Conv features: 3 -> 32 -> 64 -> 128
-- Linear layer: 18432 -> 512
-- Classifiers: 512 -> 62
-
--- Dataset: 5 letters + even spacing
-
-Accuracy: 84.55%
-- Train loss: 0.16
+--- CNN with 10 classification heads
+Accuracy:  
+- Train loss: 
 - Epoch: 20
 - Conv features: 3 -> 32 -> 64 -> 128
 - Linear layer: 18432 -> 512
 - Classifiers: 512 -> 62
-
--- Dataset: 5 letters + even spacing + random effects
-
-Accuracy: 74.95%
-- Train loss: 0.10
-- Epoch: 20
-- Conv features: 3 -> 32 -> 64 -> 128
-- Linear layer: 18432 -> 512
-- Classifiers: 512 -> 62
-
 """
 
 from datetime import datetime
@@ -44,12 +24,13 @@ from tqdm import tqdm
 
 from train_utils import Tracker
 
-DATASET_DIR = "data/even_words_random/"
-IMG_SIZE = 60
+DATASET_DIR = "data/var_words/"
+IMG_SIZE = 80
 BATCH_SIZE = 16
 LETTERS = string.ascii_letters + string.digits
-LEN_LETTERS = len(LETTERS)
-NUM_LETTERS = 5
+BLANK_TOKEN = len(LETTERS)
+LEN_LETTERS = len(LETTERS) + 1
+NUM_LETTERS = 10
 EPOCHS = 20
 
 
@@ -58,7 +39,6 @@ class SplitHorizontal(nn.Module):
         super().__init__()
 
     def forward(self, x):
-        # torch.chunk(x, NUM_LETTERS, dim=3)
         B, C, H, W = x.shape
         split_w = W // NUM_LETTERS
         x = x.reshape(B, C, H, NUM_LETTERS, split_w)
@@ -67,7 +47,7 @@ class SplitHorizontal(nn.Module):
         return x
 
 
-class FixedWordsDataset(Dataset):
+class VarWordsDataset(Dataset):
     image_list: list[str]
 
     def __init__(self):
@@ -80,17 +60,26 @@ class FixedWordsDataset(Dataset):
     def __getitem__(self, index):
         image_name = self.image_list[index]
         image_path = os.path.join(DATASET_DIR, image_name)
-        img = Image.open(image_path).resize((IMG_SIZE, IMG_SIZE))
+
+        # Pad the image from the right
+        img_raw = Image.open(image_path)
+        _w, h = img_raw.size
+        max_w = NUM_LETTERS * 16
+        img = Image.new(img_raw.mode, (max_w, h), (255, 255, 255))
+        img.paste(img_raw, (0,0))
+        img = img.resize((IMG_SIZE, IMG_SIZE))
         img = np.array(img).transpose(2, 0, 1)
         img = torch.tensor(img, dtype=torch.float32) / 255.0
 
+        label = torch.full((NUM_LETTERS,), BLANK_TOKEN, dtype=torch.long)
         chars_to_idx = {v: i for (i, v) in enumerate(LETTERS)}
         label_str = image_name.split("_")[1].split(".")[0]
-        label = torch.tensor([chars_to_idx[l] for l in label_str])
+        label_ids = torch.tensor([chars_to_idx[l] for l in label_str])
+        label[torch.arange(len(label_str))] = label_ids
         return img, label
 
 
-dataset = FixedWordsDataset()
+dataset = VarWordsDataset()
 len_train = int(len(dataset) * 0.8)
 len_val = int(len(dataset) - len_train)
 train_dataset, val_dataset = random_split(
@@ -131,7 +120,7 @@ class Classifier(nn.Module):
                 nn.ReLU(),
             ),
             SplitHorizontal(),
-            nn.Linear(128 * 3 * 15, 2048),
+            nn.Linear(128 * 2 * 20, 2048),
             nn.ReLU(),
             nn.Dropout(0.5),
         )
@@ -147,7 +136,6 @@ class Classifier(nn.Module):
     def forward(self, x):
         features = self.features(x)
         B, S, F = features.shape  # Batch, Split, Features
-
         return torch.stack(
             [
                 classifier(features[:, i, :].reshape(B, F))
@@ -188,6 +176,7 @@ for epoch in range(EPOCHS):
             t.plot("train_loss")
 
     correct_letters = 0
+    total_letters = 0
     total_correct = 0
     total_samples = 0
 
@@ -196,9 +185,19 @@ for epoch in range(EPOCHS):
         for imgs, labels in tqdm(val_loader, desc="Validation"):
             logits = model(imgs)  # B, N, C
             preds = torch.argmax(logits, dim=2)  # B, N
-            correct_letters += (preds == labels).sum()
-            total_correct += (preds == labels).all(dim=1).sum()
-            total_samples += labels.shape[0]
+
+            B, N = labels.shape
+            mask = labels != BLANK_TOKEN  # B, N
+            
+            # Letter accuracy: count correct non-blank predictions
+            correct_letters += ((preds == labels) & mask).sum()
+            total_letters += mask.sum()
+            
+            # Word accuracy: all non-blank positions must be correct
+            # For each sample, check if (correct OR is_blank) for ALL positions
+            word_correct = ((preds == labels) | ~mask).all(dim=1)  # B,
+            total_correct += word_correct.sum()
+            total_samples += B
 
         print(f"Total correct: {total_correct}")
         print(f"Total samples: {total_samples}")
