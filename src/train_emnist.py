@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm import tqdm
 
-from train_utils import Tracker
+from tracker import Tracker
 
 BATCH_SIZE = 16
 NUM_CLASSES = 47

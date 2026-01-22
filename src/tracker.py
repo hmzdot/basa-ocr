@@ -3,7 +3,7 @@ Unified training utilities: logging, plotting, and checkpointing.
 
 Example Usage:
 ---
-from train_utils import Tracker
+from tracker import Tracker
 
 t = Tracker("my_experiment")  # or auto-generates timestamp
 

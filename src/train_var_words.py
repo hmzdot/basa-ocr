@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision import datasets, transforms
 from tqdm import tqdm
 
-from train_utils import Tracker
+from tracker import Tracker
 
 DATASET_DIR = "data/var_words/"
 IMG_SIZE = 80

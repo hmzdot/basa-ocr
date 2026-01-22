@@ -7,7 +7,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
-from train_utils import Tracker
+from tracker import Tracker
 
 train_dataset = datasets.MNIST(
     root="data", download=True, train=True, transform=(transforms.ToTensor())
