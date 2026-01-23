@@ -1,7 +1,7 @@
 """
 --- CNN with 10 classification heads
-Accuracy:  
-- Train loss: 
+Accuracy: 86.30%
+- Train loss: 0.08
 - Epoch: 20
 - Conv features: 3 -> 32 -> 64 -> 128
 - Linear layer: 18432 -> 512
@@ -66,7 +66,7 @@ class VarWordsDataset(Dataset):
         _w, h = img_raw.size
         max_w = NUM_LETTERS * 16
         img = Image.new(img_raw.mode, (max_w, h), (255, 255, 255))
-        img.paste(img_raw, (0,0))
+        img.paste(img_raw, (0, 0))
         img = img.resize((IMG_SIZE, IMG_SIZE))
         img = np.array(img).transpose(2, 0, 1)
         img = torch.tensor(img, dtype=torch.float32) / 255.0
@@ -188,11 +188,11 @@ for epoch in range(EPOCHS):
 
             B, N = labels.shape
             mask = labels != BLANK_TOKEN  # B, N
-            
+
             # Letter accuracy: count correct non-blank predictions
             correct_letters += ((preds == labels) & mask).sum()
             total_letters += mask.sum()
-            
+
             # Word accuracy: all non-blank positions must be correct
             # For each sample, check if (correct OR is_blank) for ALL positions
             word_correct = ((preds == labels) | ~mask).all(dim=1)  # B,
