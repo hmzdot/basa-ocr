@@ -3,15 +3,15 @@
 
 Initial
 Accuracy: 86.60%
-- Train loss: ~0.01
+- Train loss: 0.03
 - Epoch: 20
 - Conv features: 3 -> 32 -> 64 -> 128
 - LSTM hidden state: 256
 - LSTM layers: 2
 
 Deeper CNN
-Accuracy: 83.30%
-- Train loss: ~0.01
+Accuracy: 86.60%
+- Train loss: 0.03
 - Epoch: 20
 * Conv features: 3 -> 32 -> 64 -> 128 -> 256
 - LSTM hidden state: 256
@@ -20,6 +20,7 @@ Accuracy: 83.30%
 
 from datetime import datetime
 
+import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -27,6 +28,7 @@ import torch.optim as optim
 import os
 import numpy as np
 import string
+import shutil
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision import datasets, transforms
@@ -201,72 +203,75 @@ optimizer = optim.AdamW(model.parameters(), lr=0.001)
 t.register("model", model)
 t.register("optimizer", optimizer)
 
-best_accuracy = 0.0
-for epoch in range(EPOCHS):
-    pbar = tqdm(enumerate(train_loader), desc=f"Epoch {epoch}", total=len(train_loader))
-    for i, (imgs, labels) in pbar:
-        out = model(imgs)  # N, T, C
-        out = out.permute(1, 0, 2) # T, N, C
-        T, N, C = out.shape
+RUN_NAME = "2026-01-24_03-54-31"
+t.load(RUN_NAME, which="epoch_0012")
 
-        probs = F.log_softmax(out, dim=2) # T, N
-        input_lengths = torch.full((N,), T, dtype=torch.long)
+total_correct = 0
+total_samples = 0
 
-        target_lengths = (labels != BLANK_TOKEN).sum(dim=1)
+with torch.no_grad():
+    model.eval()
 
-        optimizer.zero_grad()
+    incorrect = []
+    for imgs, labels in tqdm(val_loader, desc="Validation"):
+        logits = model(imgs)  # N, T, C
+        preds = torch.argmax(logits, dim=2)  # N, T
+        preds = ctc_greedy_decode(preds) # N, MAX_LETTERS
 
-        loss = F.ctc_loss(probs, labels, input_lengths, target_lengths)
-        loss.backward()
-        optimizer.step()
+        B, N = labels.shape
+        mask = labels != BLANK_TOKEN  # B, N
 
-        if i % 10 == 0:
-            pbar.set_postfix_str(f"Loss: {loss.item():.2f}")
-            step = i + epoch * len(train_loader)
-            t.log(step, train_loss=loss.item())
-            t.plot("train_loss")
-
-    correct_letters = 0
-    total_letters = 0
-    total_correct = 0
-    total_samples = 0
-
-    with torch.no_grad():
-        model.eval()
-        for imgs, labels in tqdm(val_loader, desc="Validation"):
-            logits = model(imgs)  # N, T, C
-            preds = torch.argmax(logits, dim=2)  # N, T
-            preds = ctc_greedy_decode(preds) # N, MAX_LETTERS
-
-            B, N = labels.shape
-            mask = labels != BLANK_TOKEN  # B, N
-
-            # Letter accuracy: count correct non-blank predictions
-            correct_letters += ((preds == labels) & mask).sum()
-            total_letters += mask.sum()
-
-            # Word accuracy: all non-blank positions must be correct
-            # For each sample, check if (correct OR is_blank) for ALL positions
-            word_correct = ((preds == labels) | ~mask).all(dim=1)  # B,
-            total_correct += word_correct.sum()
-            total_samples += B
-
-        print(f"Total correct: {total_correct}")
-        print(f"Total samples: {total_samples}")
-        print(
-            f"Letter acc: {correct_letters * 100 / total_letters:.2f}%"
-            f" ({correct_letters}/{total_samples * LEN_LETTERS})"
+        incorrect_labels = ((preds != labels) & mask).any(dim=1)
+        incorrect.extend(
+            list(
+                zip(
+                    labels[incorrect_labels, :].cpu().detach().tolist(),
+                    preds[incorrect_labels, :].cpu().detach().tolist(),
+                )
+            )
         )
 
-        accuracy = total_correct * 100 / total_samples
-        t.log(epoch, val_accuracy=accuracy)
-        t.plot("val_accuracy")
-        print(f"Accuracy: {accuracy:.3f}%")
+        # Word accuracy: all non-blank positions must be correct
+        # For each sample, check if (correct OR is_blank) for ALL positions
+        word_correct = ((preds == labels) | ~mask).all(dim=1)  # B,
+        total_correct += word_correct.sum()
+        total_samples += B
 
-        # Save checkpoint
-        t.save_logs()
-        t.save(epoch=epoch, is_best=accuracy > best_accuracy, keep_last=3)
-        if accuracy > best_accuracy:
-            best_accuracy = accuracy
+    # Sample incorrect ones
+    SAMPLE_SIZE = 20
+    samples = random.choices(incorrect, k=SAMPLE_SIZE)
+    os.makedirs(f"logs/{RUN_NAME}/failed", exist_ok=True)
+    label_idx_to_char = {i + 1: c for i, c in enumerate(LETTERS)}
+    label_to_images: dict[str, list[str]] = {}
+    for image_name in dataset.image_list:
+        label_str = image_name.split("_")[1].split(".")[0]
+        label_to_images.setdefault(label_str, []).append(image_name)
 
-        model.train()
+    copied = 0
+    for sample_label_ids, sample_pred_ids in samples:
+        sample_label = "".join(
+            label_idx_to_char[idx] for idx in sample_label_ids if idx != BLANK_TOKEN
+        )
+        sample_pred = "".join(
+            label_idx_to_char[idx] for idx in sample_pred_ids if idx != BLANK_TOKEN
+        )
+        matches = label_to_images.get(sample_label, [])
+        if not matches:
+            continue
+        image_name = matches.pop(0)
+        src_path = os.path.join(DATASET_DIR, image_name)
+        if sample_pred:
+            base, ext = os.path.splitext(image_name)
+            image_name = f"{base}_pred-{sample_pred}{ext}"
+        dst_path = os.path.join(f"logs/{RUN_NAME}/failed", image_name)
+        shutil.copy2(src_path, dst_path)
+        copied += 1
+
+    print(f"Incorrect samples: {len(incorrect)}")
+    print(f"Copied failed samples: {copied}")
+
+    print(f"Total correct: {total_correct}")
+    print(f"Total samples: {total_samples}")
+
+    accuracy = total_correct * 100 / total_samples
+    print(f"Accuracy: {accuracy:.3f}%")

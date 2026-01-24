@@ -56,9 +56,7 @@ class Tracker:
         self.data: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         self.registry: dict[str, object] = {}
 
-    # -------------------------------------------------------------------------
     # Logging
-    # -------------------------------------------------------------------------
 
     def log(self, step: int, **kwargs) -> None:
         """Log one or more metrics at a given step."""
@@ -105,9 +103,7 @@ class Tracker:
                 d = json.load(f)
                 self.data[name] = (np.array(d["steps"]), np.array(d["values"]))
 
-    # -------------------------------------------------------------------------
     # Plotting
-    # -------------------------------------------------------------------------
 
     def plot(
         self,
@@ -209,9 +205,7 @@ class Tracker:
             result[i] = alpha * result[i - 1] + (1 - alpha) * values[i]
         return result
 
-    # -------------------------------------------------------------------------
     # Checkpointing
-    # -------------------------------------------------------------------------
 
     def register(self, name: str, obj) -> None:
         """Register an object (model, optimizer, scheduler) for checkpointing."""
