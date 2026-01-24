@@ -1,13 +1,3 @@
-"""
---- CNN with 10 classification heads
-Accuracy: 86.30%
-- Train loss: 0.08
-- Epoch: 20
-- Conv features: 3 -> 32 -> 64 -> 128
-- Linear layer: 18432 -> 512
-- Classifiers: 512 -> 62
-"""
-
 from datetime import datetime
 
 import torch
@@ -25,27 +15,13 @@ from tqdm import tqdm
 from tracker import Tracker
 
 DATASET_DIR = "data/var_words/"
-IMG_SIZE = 80
+IMAGE_HEIGHT = 32
 BATCH_SIZE = 16
 LETTERS = string.ascii_letters + string.digits
-BLANK_TOKEN = len(LETTERS)
+BLANK_TOKEN = 0
 LEN_LETTERS = len(LETTERS) + 1
-NUM_LETTERS = 10
+MAX_LETTERS = 10
 EPOCHS = 20
-
-
-class SplitHorizontal(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x):
-        B, C, H, W = x.shape
-        split_w = W // NUM_LETTERS
-        x = x.reshape(B, C, H, NUM_LETTERS, split_w)
-        x = x.permute(0, 3, 1, 2, 4)
-        x = x.reshape(B, NUM_LETTERS, -1)
-        return x
-
 
 class VarWordsDataset(Dataset):
     image_list: list[str]
@@ -64,15 +40,14 @@ class VarWordsDataset(Dataset):
         # Pad the image from the right
         img_raw = Image.open(image_path)
         _w, h = img_raw.size
-        max_w = NUM_LETTERS * 16
+        max_w = MAX_LETTERS * 16
         img = Image.new(img_raw.mode, (max_w, h), (255, 255, 255))
         img.paste(img_raw, (0, 0))
-        img = img.resize((IMG_SIZE, IMG_SIZE))
         img = np.array(img).transpose(2, 0, 1)
         img = torch.tensor(img, dtype=torch.float32) / 255.0
 
-        label = torch.full((NUM_LETTERS,), BLANK_TOKEN, dtype=torch.long)
-        chars_to_idx = {v: i for (i, v) in enumerate(LETTERS)}
+        label = torch.full((MAX_LETTERS,), BLANK_TOKEN, dtype=torch.long)
+        chars_to_idx = {v: (i+1) for (i, v) in enumerate(LETTERS)}
         label_str = image_name.split("_")[1].split(".")[0]
         label_ids = torch.tensor([chars_to_idx[l] for l in label_str])
         label[torch.arange(len(label_str))] = label_ids
@@ -107,8 +82,6 @@ class ConvLayer(nn.Module):
         stride: int = 1,
         padding: int = 1,
         pool: tuple[int, int] | None = None,
-        pool_kernel_size: int = 2,
-        pool_stride: int = 2,
     ):
         super().__init__()
         modules = [
@@ -123,11 +96,7 @@ class ConvLayer(nn.Module):
             nn.ReLU(),
         ]
         if pool:
-            pool_kernel, pool_size = pool
-            modules.append(nn.MaxPool2d(
-                kernel_size=pool_kernel_size,
-                stride=pool_kernel_size,
-            ))
+            modules.append(nn.MaxPool2d(kernel_size=pool, stride=pool))
 
         self.layer = nn.Sequential(*modules)
 
@@ -147,7 +116,7 @@ class CRNN(nn.Module):
         self.cnn = nn.Sequential(
             ConvLayer(3, 32, pool=(2,2)),   # B, 32, H/2, W/2
             ConvLayer(32, 64, pool=(2,2)),  # B, 64, H/4, W/4 
-            ConvLayer(64, 128, pool=(2,1)), # B, 128, H/8, W/4 
+            ConvLayer(64, 128, pool=(2,1)), # B, 128, H/8, W/4
         )
         # Out: B, 128, H/8, W/4
 
@@ -170,17 +139,41 @@ class CRNN(nn.Module):
 
         B, C, H, W = x.shape
 
-        x = x.permute(0, 3, 1, 2)           # B, W/4, 128, H/4
-        x = x.reshape(B, W, -1)             # B, W/4, 128 * H/4 
+        x = x.permute(0, 3, 1, 2)       # B, W/8, 128, H/4
+        x = x.reshape(B, W, -1)         # B, W/8, 128 * H/4 
 
-        x, _ = self.rnn(x)                 # B, W/4, d_h * 2
-        return self.transcription(x)        # B, W/4, d_c
+        x, _ = self.rnn(x)              # B, W/8, d_h * 2
 
+        x = self.transcription(x)       # B, W/8, d_c
+        return x 
+
+def ctc_greedy_decode(x: torch.Tensor) -> torch.Tensor:
+    """
+    In: x (B, T)
+    Out: (B, max_len)
+    """
+    B, T = x.shape
+    out = torch.full((B, MAX_LETTERS), BLANK_TOKEN, dtype=torch.long)
+    
+    for b in range(B):
+        decoded = []
+        prev_char = BLANK_TOKEN
+        
+        for t in range(T):
+            cur_char = x[b, t].item()
+            if cur_char != BLANK_TOKEN and cur_char != prev_char:
+                decoded.append(cur_char)
+            prev_char = cur_char
+        
+        for i, c in enumerate(decoded[:MAX_LETTERS]):
+            out[b, i] = c
+    
+    return out
 
 run_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 t = Tracker(run_name=run_name)
 
-model = CRNN(height=32, num_classes=NUM_LETTERS)
+model = CRNN(height=IMAGE_HEIGHT, num_classes=LEN_LETTERS)
 optimizer = optim.AdamW(model.parameters(), lr=0.001)
 
 # Register model and optimizer for checkpointing
@@ -190,14 +183,18 @@ t.register("optimizer", optimizer)
 for epoch in range(EPOCHS):
     pbar = tqdm(enumerate(train_loader), desc=f"Epoch {epoch}", total=len(train_loader))
     for i, (imgs, labels) in pbar:
-        B, N = labels.shape
-        out = model(imgs)  # B, N, C
-        out = out.reshape(B * N, -1)  # B x N, C
-        labels = labels.reshape(B * N)  # B x N
+        out = model(imgs)  # N, T, C
+        out = out.permute(1, 0, 2) # T, N, C
+        T, N, C = out.shape
+
+        probs = F.softmax(out, dim=2) # T, N
+        input_lengths = torch.full((N,), T, dtype=torch.long)
+
+        target_lengths = (labels != BLANK_TOKEN).sum(dim=1)
 
         optimizer.zero_grad()
 
-        loss = F.cross_entropy(out, labels)
+        loss = F.ctc_loss(probs, labels, input_lengths, target_lengths)
         loss.backward()
         optimizer.step()
 
@@ -215,8 +212,9 @@ for epoch in range(EPOCHS):
     with torch.no_grad():
         model.eval()
         for imgs, labels in tqdm(val_loader, desc="Validation"):
-            logits = model(imgs)  # B, N, C
-            preds = torch.argmax(logits, dim=2)  # B, N
+            logits = model(imgs)  # N, T, C
+            preds = torch.argmax(logits, dim=2)  # N, T
+            preds = ctc_greedy_decode(preds) # N, MAX_LETTERS
 
             B, N = labels.shape
             mask = labels != BLANK_TOKEN  # B, N
@@ -234,8 +232,8 @@ for epoch in range(EPOCHS):
         print(f"Total correct: {total_correct}")
         print(f"Total samples: {total_samples}")
         print(
-            f"Letter acc: {correct_letters * 100 / total_samples / NUM_LETTERS:.2f}%"
-            f" ({correct_letters}/{total_samples * NUM_LETTERS})"
+            f"Letter acc: {correct_letters * 100 / total_samples / LEN_LETTERS:.2f}%"
+            f" ({correct_letters}/{total_samples * LEN_LETTERS})"
         )
 
         accuracy = total_correct * 100 / total_samples
