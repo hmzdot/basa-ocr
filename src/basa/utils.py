@@ -3,7 +3,7 @@ Unified training utilities: logging, plotting, and checkpointing.
 
 Example Usage:
 ---
-from tracker import Tracker
+from basa.utils import Tracker
 
 t = Tracker("my_experiment")  # or auto-generates timestamp
 

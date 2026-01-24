@@ -1,7 +1,7 @@
 [project]
-name = "cnn-mnist"
+name = "basa"
 version = "0.1.0"
-description = "Add your description here"
+description = "OCR suite"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -14,3 +14,13 @@ dependencies = [
     "torchvision>=0.24.1",
     "tqdm>=4.67.1",
 ]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
