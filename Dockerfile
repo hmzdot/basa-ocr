@@ -15,12 +15,11 @@ RUN apt-get update \
         python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
+COPY src/ src/
 
 RUN python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip \
     && /opt/venv/bin/pip install .
 
 ENV PATH="/opt/venv/bin:${PATH}"
-
-COPY src/ src/
