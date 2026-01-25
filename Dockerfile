@@ -6,13 +6,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
     PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cu126
 
-RUN apt-get install -y --no-install-recommends \
-       python3 \
-       python3-venv \
-       python3-pip \
-       build-essential \
-       python3-dev \
-   && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-venv \
+        python3-pip \
+        build-essential \
+        python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./
 
