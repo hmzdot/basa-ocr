@@ -6,7 +6,7 @@ from datasets import load_dataset
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms import functional as TF
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, IterableDataset
 
 BATCH_SIZE = 16
 TARGET_HEIGHT = 32
@@ -29,8 +29,40 @@ transform = transforms.Compose(
     ]
 )
 
-train_dataset = load_dataset(DATASET_NAME, split="train", streaming=True)
-val_dataset = load_dataset(DATASET_NAME, split="test", streaming=True)
+class SafeStreamingDataset(IterableDataset):
+    def __init__(self, dataset, split_name, max_skip_logs=5):
+        self.dataset = dataset
+        self.split_name = split_name
+        self.max_skip_logs = max_skip_logs
+
+    def __iter__(self):
+        it = iter(self.dataset)
+        skipped = 0
+        while True:
+            try:
+                sample = next(it)
+            except StopIteration:
+                if skipped:
+                    print(f"[{self.split_name}] skipped {skipped} bad samples")
+                break
+            except (OSError, ValueError, RuntimeError) as err:
+                skipped += 1
+                if skipped <= self.max_skip_logs:
+                    print(
+                        f"[{self.split_name}] skipping bad sample due to decode error: {err}",
+                    )
+                continue
+            yield sample
+
+
+train_dataset = SafeStreamingDataset(
+    load_dataset(DATASET_NAME, split="train", streaming=True),
+    split_name="train",
+)
+val_dataset = SafeStreamingDataset(
+    load_dataset(DATASET_NAME, split="test", streaming=True),
+    split_name="val",
+)
 
 
 class Vocabulary:
