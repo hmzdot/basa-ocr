@@ -12,6 +12,14 @@ from .ctc_decode import ctc_greedy_decode
 from ..utils import Tracker
 
 
+def detect_device() -> torch.device:
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
 def run(
     img_height=32,
     epochs=20,
@@ -20,8 +28,10 @@ def run(
 ):
     run_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     t = Tracker(run_name=run_name)
+    device = detect_device()
+    print(f"Using device: {device}")
 
-    model = CRNN(height=img_height, num_classes=len(vocab))
+    model = CRNN(height=img_height, num_classes=len(vocab)).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=0.001)
 
     # Register model and optimizer for checkpointing
@@ -34,7 +44,8 @@ def run(
             enumerate(train_loader), desc=f"Epoch {epoch}", total=len_train,
         )
         for i, batch in pbar:
-            imgs, labels = batch["images"], batch["labels"]
+            imgs = batch["images"].to(device)
+            labels = batch["labels"].to(device)
 
             out = model(imgs)  # N, T, C
             out = out.permute(1, 0, 2)  # T, N, C
@@ -44,7 +55,7 @@ def run(
 
             optimizer.zero_grad()
 
-            input_lengths = torch.full((N,), T, dtype=torch.long)
+            input_lengths = torch.full((N,), T, dtype=torch.long, device=device)
             target_lengths = (labels != vocab.blank_token).sum(dim=1)
 
             loss = F.ctc_loss(probs, labels, input_lengths, target_lengths)
@@ -65,7 +76,8 @@ def run(
         with torch.no_grad():
             model.eval()
             for batch in tqdm(val_loader, desc="Validation", total=len_val):
-                imgs, labels = batch['images'], batch['labels']
+                imgs = batch["images"].to(device)
+                labels = batch["labels"].to(device)
                 max_letters = labels.size(1)
 
                 logits = model(imgs)  # N, T, C
@@ -80,20 +92,20 @@ def run(
                 mask = labels != vocab.blank_token  # B, N
 
                 # Letter accuracy: count correct non-blank predictions
-                correct_letters += ((preds == labels) & mask).sum()
-                total_letters += mask.sum()
+                correct_letters += int(((preds == labels) & mask).sum().item())
+                total_letters += int(mask.sum().item())
 
                 # Word accuracy: all non-blank positions must be correct
                 # For each sample, check if (correct OR is_blank) for ALL positions
                 word_correct = ((preds == labels) | ~mask).all(dim=1)  # B,
-                total_correct += word_correct.sum()
+                total_correct += int(word_correct.sum().item())
                 total_samples += B
 
             print(f"Total correct: {total_correct}")
             print(f"Total samples: {total_samples}")
             print(
-                f"Letter acc: {correct_letters * 100 / total_letters:.2f}%"
-                f" ({correct_letters}/{total_samples * len(vocab)})"
+                f"Letter acc: {(correct_letters * 100 / total_letters):.2f}%"
+                f" ({correct_letters}/{total_letters})"
             )
 
             accuracy = total_correct * 100 / total_samples
