@@ -58,7 +58,7 @@ def run(
     t.register("model", model)
     t.register("optimizer", optimizer)
 
-    t.load(run_name, checkpoint_name) 
+    t.load(run_name, checkpoint_name)
 
     total_correct = 0
     total_samples = 0
@@ -108,7 +108,9 @@ def run(
         copied = 0
         for sample_label_ids, sample_pred_ids in samples:
             sample_label = "".join(
-                label_idx_to_char[idx] for idx in sample_label_ids if idx != blank_letter
+                label_idx_to_char[idx]
+                for idx in sample_label_ids
+                if idx != blank_letter
             )
             sample_pred = "".join(
                 label_idx_to_char[idx] for idx in sample_pred_ids if idx != blank_letter

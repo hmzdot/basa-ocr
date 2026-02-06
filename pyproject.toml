@@ -5,6 +5,7 @@ description = "OCR suite"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "datasets>=4.5.0",
     "ipykernel>=7.1.0",
     "marimo>=0.18.4",
     "matplotlib>=3.10.8",

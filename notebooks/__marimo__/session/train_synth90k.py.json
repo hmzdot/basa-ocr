@@ -1,0 +1,94 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.19.6"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "cd3029bbb5d6275b9ec542ad35efb1cd",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "VCuH",
+      "code_hash": "49661a33cd4ce74527e936ddf567333d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "JwIZ",
+      "code_hash": "b7a00e9b6cc268a83ff057cdc60875a5",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "torch.Size([16, 3, 32, 175]) torch.Size([16, 15])\ntorch.Size([16, 43, 63])\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "CZkv",
+      "code_hash": "41555ea8ab0e9291eb074f5dc482bdae",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "torch.Size([16]) torch.Size([16])\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "rEiP",
+      "code_hash": "60a3a81b7829b822fd80739fd6e4114e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<pre class='text-xs'>20.61109161376953</pre>"
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "probs torch.Size([43, 16, 63])\nlabels torch.Size([16, 15])\ntorch.Size([16])\ntorch.Size([16])\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    }
+  ]
+}
