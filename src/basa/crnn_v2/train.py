@@ -34,8 +34,6 @@ def run(
             enumerate(train_loader), desc=f"Epoch {epoch}", total=len_train,
         )
         for i, batch in pbar:
-            if i == 100:
-                break
             imgs, labels = batch["images"], batch["labels"]
 
             out = model(imgs)  # N, T, C
