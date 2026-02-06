@@ -9,7 +9,12 @@ def ctc_greedy_decode(x, max_letters: int, blank_token=0):
     Out: (B, max_len)
     """
     B, T = x.shape
-    out = torch.full((B, max_letters), blank_token, dtype=torch.long)
+    out = torch.full(
+        (B, max_letters),
+        blank_token,
+        dtype=torch.long,
+        device=x.device,
+    )
 
     for b in range(B):
         decoded = []
