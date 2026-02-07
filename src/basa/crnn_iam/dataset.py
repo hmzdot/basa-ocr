@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 from torch.utils.data import Dataset, random_split, DataLoader
-from torchvision import transforms
+import torchvision.transforms.v2 as transforms
 
 
 class Vocabulary:
@@ -25,7 +25,9 @@ class Vocabulary:
     def decode(self, indices):
         return "".join([self.idx_to_char[idx] for idx in indices if idx != 0])
 
+
 vocab = Vocabulary()
+
 
 class IAMDataset(Dataset):
     # path -> label
@@ -59,7 +61,7 @@ class IAMDataset(Dataset):
         new_w = max(1, int(round(w * (self.target_height / h))))
         img = img.resize((new_w, self.target_height))
 
-        return dict(img=img, label=label) 
+        return dict(img=img, label=label)
 
     def _parse_words_file(self, text: str) -> list[tuple[str, str]]:
         items = list()
@@ -89,34 +91,54 @@ class IAMDataset(Dataset):
             items.append((img_path, parts[-1]))
         return items
 
-def collate_fn(items):
-    transform = transforms.Compose([ transforms.ToTensor() ])
 
-    imgs = [ item["img"] for item in items ]
-    imgs = [ transform(img) for img in imgs ]
-    labels = [ item["label"] for item in items ]
+def collate_fn_split(split: str):
+    if split == "train":
+        transform = transforms.Compose(
+            [
+                transforms.ColorJitter(brightness=0.3, contrast=0.3),
+                transforms.GaussianBlur(kernel_size=3),
+                transforms.RandomRotation(degrees=(-10, 10)),
+                transforms.RandomPerspective(0.2),
+                transforms.ToImage(),
+                transforms.ToDtype(torch.float32, scale=True),
+            ]
+        )
+    else:
+        transform = transforms.Compose(
+            [
+                transforms.ToImage(),
+                transforms.ToDtype(torch.float32, scale=True),
+            ]
+        )
 
-    img_widths = torch.tensor([ img.shape[2] for img in imgs ])
-    max_width = img_widths.max().item()
-    imgs = torch.stack(
-        [
-            F.pad(img, (0, max_width - img.size(2)), "constant", 0)
-            for img in imgs
-        ],
-        dim=0,
-    )
+    def collate_fn(items):
+        imgs = [item["img"] for item in items]
+        imgs = [transform(img) for img in imgs]
+        labels = [item["label"] for item in items]
 
-    label_lengths = torch.tensor([len(label) for label in labels])
-    max_label = int(label_lengths.max().item())
-    labels = [vocab.encode(label) + [0] * (max_label - len(label)) for label in labels]
-    labels = torch.stack([torch.tensor(label) for label in labels])
+        img_widths = torch.tensor([img.shape[2] for img in imgs])
+        max_width = img_widths.max().item()
+        imgs = torch.stack(
+            [F.pad(img, (0, max_width - img.size(2)), "constant", 0) for img in imgs],
+            dim=0,
+        )
 
-    return {
-        "imgs": imgs,
-        "img_widths": img_widths,
-        "labels": labels,
-        "label_lengths": label_lengths,
-    }
+        label_lengths = torch.tensor([len(label) for label in labels])
+        max_label = int(label_lengths.max().item())
+        labels = [
+            vocab.encode(label) + [0] * (max_label - len(label)) for label in labels
+        ]
+        labels = torch.stack([torch.tensor(label) for label in labels])
+
+        return {
+            "imgs": imgs,
+            "img_widths": img_widths,
+            "labels": labels,
+            "label_lengths": label_lengths,
+        }
+
+    return collate_fn
 
 
 lexicon = string.ascii_letters + string.digits
@@ -131,8 +153,22 @@ train_dataset, val_dataset = random_split(
     dataset, lengths=(len_train, len_val), generator=torch.Generator()
 )
 
-train_loader = DataLoader(train_dataset, batch_size=32, collate_fn=collate_fn)
-batch = next(iter(train_loader))
 
-for k,v in batch.items():
-    print(f"{k}: {v.shape}")
+if __name__ == "__main__":
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=32,
+        collate_fn=collate_fn_split("train"),
+    )
+    batch = next(iter(train_loader))
+
+    idx = 20
+    img10_w = batch["img_widths"][idx].item()
+    img10 = batch["imgs"][idx].squeeze(0).cpu().numpy()
+    img10 = (img10 * 255).clip(0, 255).astype("uint8")
+    img10_h, _ = img10.shape
+    img = Image.fromarray(img10).crop((0, 0, img10_w, img10_h))
+    img.show()
+
+    for k, v in batch.items():
+        print(f"{k}: {v.shape}")

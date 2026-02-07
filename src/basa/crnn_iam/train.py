@@ -5,7 +5,7 @@ from datetime import datetime
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .dataset import collate_fn, train_dataset, val_dataset, vocab
+from .dataset import collate_fn_split, train_dataset, val_dataset, vocab
 from .model import CRNN
 from .ctc_decode import ctc_greedy_decode
 from ..utils import Tracker
@@ -26,12 +26,12 @@ def run(img_height=32, epochs=20, batch_size=32):
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
-        collate_fn=collate_fn,
+        collate_fn=collate_fn_split("train"),
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
-        collate_fn=collate_fn,
+        collate_fn=collate_fn_split("val"),
     )
 
     model = CRNN(
