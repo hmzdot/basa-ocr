@@ -38,11 +38,6 @@ def run(
         dataset, lengths=(len_train, len_val), generator=torch.Generator()
     )
 
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-    )
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,

@@ -36,14 +36,15 @@ class CRNN(nn.Module):
     def __init__(
         self,
         height: int,
+        in_chans: int,
         num_classes: int,
         rnn_hidden: int = 256,
         rnn_layers: int = 2,
     ):
         super().__init__()
-        # In: B, 3, H, W
+        # In: B, in_dim, H, W
         self.cnn = nn.Sequential(
-            ConvLayer(3, 32, pool=(2, 2)),  # B, 32, H/2, W/2
+            ConvLayer(in_chans, 32, pool=(2, 2)),  # B, 32, H/2, W/2
             ConvLayer(32, 64, pool=(2, 2)),  # B, 64, H/4, W/4
             ConvLayer(64, 128, pool=(2, 1)),  # B, 128, H/8, W/4
             ConvLayer(128, 256, pool=(2, 1)),  # B, 128, H/16, W/4

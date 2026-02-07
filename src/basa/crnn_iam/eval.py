@@ -51,7 +51,11 @@ def run(
     run_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     t = Tracker(run_name=run_name)
 
-    model = CRNN(height=img_height, num_classes=len(lexicon))
+    model = CRNN(
+        in_chans=1,
+        height=img_height,
+        num_classes=len(lexicon),
+    )
     optimizer = optim.AdamW(model.parameters(), lr=0.001)
 
     # Register model and optimizer for checkpointing

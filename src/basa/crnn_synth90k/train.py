@@ -31,7 +31,10 @@ def run(
     device = detect_device()
     print(f"Using device: {device}")
 
-    model = CRNN(height=img_height, num_classes=len(vocab)).to(device)
+    model = CRNN(
+        height=img_height,
+        num_classes=len(vocab),
+    ).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=0.001)
 
     # Register model and optimizer for checkpointing
@@ -41,7 +44,9 @@ def run(
     best_accuracy = 0.0
     for epoch in range(epochs):
         pbar = tqdm(
-            enumerate(train_loader), desc=f"Epoch {epoch}", total=len_train,
+            enumerate(train_loader),
+            desc=f"Epoch {epoch}",
+            total=len_train,
         )
         for i, batch in pbar:
             if batch is None:

@@ -1,12 +1,18 @@
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
-import string
 from datetime import datetime
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .dataset import train_loader, val_loader, vocab, len_train, len_val
+from .dataset import (
+    collate_fn,
+    train_dataset,
+    val_dataset,
+    vocab,
+    len_train,
+    len_val,
+)
 from .model import CRNN
 from .ctc_decode import ctc_greedy_decode
 from ..utils import Tracker
@@ -15,23 +21,31 @@ from ..utils import Tracker
 def detect_device() -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
     return torch.device("cpu")
 
 
-def run(
-    img_height=32,
-    epochs=20,
-    batch_size=16,
-    data_dir="data/var_words/",
-):
+def run(img_height=32, epochs=20, batch_size=32):
     run_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     t = Tracker(run_name=run_name)
     device = detect_device()
     print(f"Using device: {device}")
 
-    model = CRNN(height=img_height, num_classes=len(vocab)).to(device)
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        collate_fn=collate_fn,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        collate_fn=collate_fn,
+    )
+
+    model = CRNN(
+        height=img_height,
+        in_chans=1,
+        num_classes=len(vocab),
+    ).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=0.001)
 
     # Register model and optimizer for checkpointing
@@ -41,10 +55,14 @@ def run(
     best_accuracy = 0.0
     for epoch in range(epochs):
         pbar = tqdm(
-            enumerate(train_loader), desc=f"Epoch {epoch}", total=len_train,
+            enumerate(train_loader),
+            desc=f"Epoch {epoch}",
+            total=len_train,
         )
         for i, batch in pbar:
-            imgs = batch["images"].to(device)
+            if i == 100:
+                break
+            imgs = batch["imgs"].to(device)
             labels = batch["labels"].to(device)
 
             out = model(imgs)  # N, T, C
@@ -76,7 +94,7 @@ def run(
         with torch.no_grad():
             model.eval()
             for batch in tqdm(val_loader, desc="Validation", total=len_val):
-                imgs = batch["images"].to(device)
+                imgs = batch["imgs"].to(device)
                 labels = batch["labels"].to(device)
                 max_letters = labels.size(1)
 
