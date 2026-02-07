@@ -47,6 +47,7 @@ def run(img_height=32, epochs=20, batch_size=32):
 
     train_loader = DataLoader(
         train_dataset,
+        shuffle=True,
         batch_size=batch_size,
         collate_fn=collate_fn_split("train"),
     )
@@ -77,6 +78,8 @@ def run(img_height=32, epochs=20, batch_size=32):
         for i, batch in pbar:
             imgs = batch["imgs"].to(device)
             labels = batch["labels"].to(device)
+            img_widths = batch["img_widths"].to(device)
+            label_lengths = batch["label_lengths"].to(device)
 
             out = model(imgs)  # N, T, C
             out = out.permute(1, 0, 2)  # T, N, C
@@ -86,10 +89,16 @@ def run(img_height=32, epochs=20, batch_size=32):
 
             optimizer.zero_grad()
 
-            input_lengths = torch.full((N,), T, dtype=torch.long, device=device)
-            target_lengths = (labels != vocab.blank_token).sum(dim=1)
+            input_lengths = (img_widths // 4).clamp(min=1, max=T)
+            target_lengths = label_lengths
 
-            loss = F.ctc_loss(probs, labels, input_lengths, target_lengths)
+            loss = F.ctc_loss(
+                probs,
+                labels,
+                input_lengths,
+                target_lengths,
+                zero_infinity=True,
+            )
             loss.backward()
             optimizer.step()
 
@@ -134,7 +143,7 @@ def run(img_height=32, epochs=20, batch_size=32):
                         total_correct += 1
 
                     cer_edits += lev_distance_ids(hyp, ref)
-                    cer_ref_chars += ref.size(0)
+                    cer_ref_chars += len(ref)
 
                 total_samples += B
 

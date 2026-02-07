@@ -8,9 +8,8 @@ import torchvision.transforms.v2 as transforms
 
 
 class Vocabulary:
-    def __init__(self):
-        self.chars = string.ascii_letters + string.digits + string.punctuation
-
+    def __init__(self, chars: list[str]):
+        self.chars = chars
         self.blank_token = 0
         self.char_to_idx = {ch: i + 1 for (i, ch) in enumerate(self.chars)}
         self.idx_to_char = {i + 1: ch for (i, ch) in enumerate(self.chars)}
@@ -26,12 +25,10 @@ class Vocabulary:
         return "".join([self.idx_to_char[idx] for idx in indices if idx != 0])
 
 
-vocab = Vocabulary()
-
-
 class IAMDataset(Dataset):
     # path -> label
-    img_list: list[tuple[str, str]]
+    word_list: list[tuple[str, str]]
+    vocab: Vocabulary
 
     def __init__(
         self,
@@ -46,13 +43,18 @@ class IAMDataset(Dataset):
         self.lexicon = lexicon
 
         with open(words_file) as f:
-            self.img_list = self._parse_words_file(f.read())
+            self.word_list = self._parse_words_file(f.read())
+
+        chars = set()
+        for _, label in self.word_list:
+            chars.update(list(label))
+        self.vocab = Vocabulary(sorted(chars))
 
     def __len__(self):
-        return len(self.img_list)
+        return len(self.word_list)
 
     def __getitem__(self, index):
-        [img_path, label] = self.img_list[index]
+        [img_path, label] = self.word_list[index]
         img = Image.open(img_path)
 
         # Resize tot target height
@@ -70,6 +72,11 @@ class IAMDataset(Dataset):
             if line.startswith("#"):
                 continue
             parts = line.split(" ")
+
+            seg_result = parts[1]
+            if seg_result != "ok":
+                continue
+
             img_name = parts[0]
             path_parts = img_name.split("-")
             img_dir0 = path_parts[0]
@@ -83,12 +90,14 @@ class IAMDataset(Dataset):
             )
 
             # Try to open the image; if it fails, continue
-            try:
-                Image.open(img_path)
-            except Exception:
+            if not os.path.exists(img_path):
+                continue
+            elif os.path.getsize(img_path) == 0:
                 continue
 
-            items.append((img_path, parts[-1]))
+            label = " ".join(parts[8:])
+
+            items.append((img_path, label))
         return items
 
 
@@ -98,7 +107,7 @@ def collate_fn_split(split: str):
             [
                 transforms.ColorJitter(brightness=0.3, contrast=0.3),
                 transforms.GaussianBlur(kernel_size=3),
-                transforms.RandomRotation(degrees=(-10, 10)),
+                transforms.RandomRotation(degrees=(-5, 5)),
                 transforms.RandomPerspective(0.2),
                 transforms.ToImage(),
                 transforms.ToDtype(torch.float32, scale=True),
@@ -147,6 +156,7 @@ dataset = IAMDataset(
     words_file="data/iam_handwriting/words_new.txt",
     lexicon=lexicon,
 )
+vocab = dataset.vocab
 len_train = int(len(dataset) * 0.8)
 len_val = int(len(dataset) - len_train)
 train_dataset, val_dataset = random_split(
@@ -163,11 +173,11 @@ if __name__ == "__main__":
     batch = next(iter(train_loader))
 
     idx = 20
-    img10_w = batch["img_widths"][idx].item()
-    img10 = batch["imgs"][idx].squeeze(0).cpu().numpy()
-    img10 = (img10 * 255).clip(0, 255).astype("uint8")
-    img10_h, _ = img10.shape
-    img = Image.fromarray(img10).crop((0, 0, img10_w, img10_h))
+    img_w = batch["img_widths"][idx].item()
+    img = batch["imgs"][idx].squeeze(0).cpu().numpy()
+    img = (img * 255).clip(0, 255).astype("uint8")
+    img_h, _ = img.shape
+    img = Image.fromarray(img).crop((0, 0, img_w, img_h))
     img.show()
 
     for k, v in batch.items():
