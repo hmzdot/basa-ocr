@@ -50,17 +50,7 @@ class IAMDataset(Dataset):
         return len(self.img_list)
 
     def __getitem__(self, index):
-        [img_name, label] = self.img_list[index]
-        path_parts = img_name.split("-")
-        img_dir0 = path_parts[0]
-        img_dir1 = f"{path_parts[0]}-{path_parts[1]}"
-
-        img_path = os.path.join(
-            self.img_dir,
-            img_dir0,
-            img_dir1,
-            f"{img_name}.png",
-        )
+        [img_path, label] = self.img_list[index]
         img = Image.open(img_path)
 
         # Resize tot target height
@@ -78,7 +68,25 @@ class IAMDataset(Dataset):
             if line.startswith("#"):
                 continue
             parts = line.split(" ")
-            items.append((parts[0], parts[-1]))
+            img_name = parts[0]
+            path_parts = img_name.split("-")
+            img_dir0 = path_parts[0]
+            img_dir1 = f"{path_parts[0]}-{path_parts[1]}"
+
+            img_path = os.path.join(
+                self.img_dir,
+                img_dir0,
+                img_dir1,
+                f"{img_name}.png",
+            )
+
+            # Try to open the image; if it fails, continue
+            try:
+                Image.open(img_path)
+            except Exception:
+                continue
+
+            items.append((img_path, parts[-1]))
         return items
 
 def collate_fn(items):

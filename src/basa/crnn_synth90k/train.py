@@ -1,9 +1,7 @@
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
-import string
 from datetime import datetime
-from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
 from .dataset import train_loader, val_loader, vocab, len_train, len_val

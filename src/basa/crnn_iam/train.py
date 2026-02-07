@@ -5,14 +5,7 @@ from datetime import datetime
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .dataset import (
-    collate_fn,
-    train_dataset,
-    val_dataset,
-    vocab,
-    len_train,
-    len_val,
-)
+from .dataset import collate_fn, train_dataset, val_dataset, vocab
 from .model import CRNN
 from .ctc_decode import ctc_greedy_decode
 from ..utils import Tracker
@@ -57,11 +50,9 @@ def run(img_height=32, epochs=20, batch_size=32):
         pbar = tqdm(
             enumerate(train_loader),
             desc=f"Epoch {epoch}",
-            total=len_train,
+            total=len(train_loader),
         )
         for i, batch in pbar:
-            if i == 100:
-                break
             imgs = batch["imgs"].to(device)
             labels = batch["labels"].to(device)
 
@@ -82,7 +73,7 @@ def run(img_height=32, epochs=20, batch_size=32):
 
             if i % 10 == 0:
                 pbar.set_postfix_str(f"Loss: {loss.item():.2f}")
-                step = i + epoch * len_train
+                step = i + epoch * len(train_loader)
                 t.log(step, train_loss=loss.item())
                 t.plot("train_loss")
 
@@ -93,7 +84,7 @@ def run(img_height=32, epochs=20, batch_size=32):
 
         with torch.no_grad():
             model.eval()
-            for batch in tqdm(val_loader, desc="Validation", total=len_val):
+            for batch in tqdm(val_loader, desc="Validation", total=len(val_loader)):
                 imgs = batch["imgs"].to(device)
                 labels = batch["labels"].to(device)
                 max_letters = labels.size(1)
