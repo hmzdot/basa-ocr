@@ -1,12 +1,14 @@
+import io
 import string
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from datasets import Image as HFImage
 from datasets import load_dataset
+from PIL import Image, UnidentifiedImageError
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms import functional as TF
-from torch.utils.data import DataLoader, IterableDataset
+from torch.utils.data import DataLoader
 
 BATCH_SIZE = 16
 TARGET_HEIGHT = 32
@@ -22,46 +24,17 @@ def resize_to_height(img, target_height=TARGET_HEIGHT):
     return TF.resize(img, [target_height, new_w], interpolation=InterpolationMode.BILINEAR)
 
 
-transform = transforms.Compose(
-    [
-        transforms.Lambda(resize_to_height),
-        transforms.ToTensor(),
-    ]
+transform = transforms.Compose([transforms.Lambda(resize_to_height), transforms.ToTensor()])
+
+# Keep raw bytes/path from HF instead of auto-decoding via PIL in the iterator.
+# This prevents a single corrupted image from terminating the whole stream.
+train_dataset = load_dataset(DATASET_NAME, split="train", streaming=True).cast_column(
+    "image",
+    HFImage(decode=False),
 )
-
-class SafeStreamingDataset(IterableDataset):
-    def __init__(self, dataset, split_name, max_skip_logs=5):
-        self.dataset = dataset
-        self.split_name = split_name
-        self.max_skip_logs = max_skip_logs
-
-    def __iter__(self):
-        it = iter(self.dataset)
-        skipped = 0
-        while True:
-            try:
-                sample = next(it)
-            except StopIteration:
-                if skipped:
-                    print(f"[{self.split_name}] skipped {skipped} bad samples")
-                break
-            except (OSError, ValueError, RuntimeError) as err:
-                skipped += 1
-                if skipped <= self.max_skip_logs:
-                    print(
-                        f"[{self.split_name}] skipping bad sample due to decode error: {err}",
-                    )
-                continue
-            yield sample
-
-
-train_dataset = SafeStreamingDataset(
-    load_dataset(DATASET_NAME, split="train", streaming=True),
-    split_name="train",
-)
-val_dataset = SafeStreamingDataset(
-    load_dataset(DATASET_NAME, split="test", streaming=True),
-    split_name="val",
+val_dataset = load_dataset(DATASET_NAME, split="test", streaming=True).cast_column(
+    "image",
+    HFImage(decode=False),
 )
 
 
@@ -87,8 +60,44 @@ class Vocabulary:
 vocab = Vocabulary()
 
 
+_COLLATE_SKIP_LOGS = {"count": 0}
+
+
+def _decode_item_image(image_obj):
+    if isinstance(image_obj, Image.Image):
+        return image_obj
+
+    if isinstance(image_obj, dict):
+        image_bytes = image_obj.get("bytes")
+        image_path = image_obj.get("path")
+        if image_bytes is not None:
+            with Image.open(io.BytesIO(image_bytes)) as img:
+                return img.convert("RGB")
+        if image_path:
+            with Image.open(image_path) as img:
+                return img.convert("RGB")
+    raise ValueError("Unsupported image payload")
+
+
 def collate_fn(items):
-    images = [transform(item["image"]) for item in items]
+    images = []
+    labels = []
+
+    for item in items:
+        try:
+            image = _decode_item_image(item["image"])
+            image = transform(image)
+        except (OSError, ValueError, RuntimeError, UnidentifiedImageError) as err:
+            _COLLATE_SKIP_LOGS["count"] += 1
+            if _COLLATE_SKIP_LOGS["count"] <= 10:
+                print(f"[collate] skipping bad sample due to decode error: {err}")
+            continue
+
+        images.append(image)
+        labels.append(item["label"])
+
+    if not images:
+        return None
 
     image_widths = torch.tensor([img.shape[2] for img in images])
     max_width = image_widths.max().item()
@@ -100,7 +109,6 @@ def collate_fn(items):
         dim=0,
     )
 
-    labels = [item["label"] for item in items]
     label_lengths = torch.tensor([len(label) for label in labels])
     max_label = int(label_lengths.max().item())
     labels = [vocab.encode(label) + [0] * (max_label - len(label)) for label in labels]
