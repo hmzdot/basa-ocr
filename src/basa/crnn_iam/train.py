@@ -17,6 +17,28 @@ def detect_device() -> torch.device:
     return torch.device("cpu")
 
 
+def lev_distance_ids(hyp: list[int], ref: list[int]) -> int:
+    if hyp == ref:
+        return 0
+    if len(ref) == 0:
+        return len(hyp)
+    if len(hyp) == 0:
+        return len(ref)
+
+    prev = list(range(len(ref) + 1))
+    for i, h in enumerate(hyp, start=1):
+        cur = [i] + [0] * len(ref)
+        for j, r in enumerate(ref, start=1):
+            cost = 0 if h == r else 1
+            cur[j] = min(
+                prev[j] + 1,  # deletion
+                cur[j - 1] + 1,  # insertion
+                prev[j - 1] + cost,  # subst/match
+            )
+        prev = cur
+    return prev[-1]
+
+
 def run(img_height=32, epochs=20, batch_size=32):
     run_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     t = Tracker(run_name=run_name)
@@ -77,10 +99,11 @@ def run(img_height=32, epochs=20, batch_size=32):
                 t.log(step, train_loss=loss.item())
                 t.plot("train_loss")
 
-        correct_letters = 0
-        total_letters = 0
         total_correct = 0
         total_samples = 0
+
+        cer_edits = 0
+        cer_ref_chars = 0
 
         with torch.no_grad():
             model.eval()
@@ -98,28 +121,32 @@ def run(img_height=32, epochs=20, batch_size=32):
                 )  # N, MAX_LETTERS
 
                 B, N = labels.shape
-                mask = labels != vocab.blank_token  # B, N
 
-                # Letter accuracy: count correct non-blank predictions
-                correct_letters += int(((preds == labels) & mask).sum().item())
-                total_letters += int(mask.sum().item())
+                preds_cpu = preds.detach().cpu()
+                labels_cpu = labels.detach().cpu()
 
-                # Word accuracy: all non-blank positions must be correct
-                # For each sample, check if (correct OR is_blank) for ALL positions
-                word_correct = ((preds == labels) | ~mask).all(dim=1)  # B,
-                total_correct += int(word_correct.sum().item())
+                # Calculate CER on each batch
+                for i in range(B):
+                    hyp = preds_cpu[i][preds_cpu[i] != vocab.blank_token].tolist()
+                    ref = labels_cpu[i][labels_cpu[i] != vocab.blank_token].tolist()
+
+                    if hyp == ref:
+                        total_correct += 1
+
+                    cer_edits += lev_distance_ids(hyp, ref)
+                    cer_ref_chars += ref.size(0)
+
                 total_samples += B
 
-            print(f"Total correct: {total_correct}")
-            print(f"Total samples: {total_samples}")
-            print(
-                f"Letter acc: {(correct_letters * 100 / total_letters):.2f}%"
-                f" ({correct_letters}/{total_letters})"
-            )
+            cer = cer_edits / max(1, cer_ref_chars)
+            print(f"CER: {cer:.2f}")
 
             accuracy = total_correct * 100 / total_samples
             t.log(epoch, val_accuracy=accuracy)
             t.plot("val_accuracy")
+
+            print(f"Total correct: {total_correct}")
+            print(f"Total samples: {total_samples}")
             print(f"Accuracy: {accuracy:.3f}%")
 
             # Save checkpoint
